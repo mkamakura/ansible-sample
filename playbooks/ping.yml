@@ -1,0 +1,6 @@
+- hosts: client
+  user: vagrant
+  sudo: yes
+  tasks:
+  - name: ping check
+    action: ping

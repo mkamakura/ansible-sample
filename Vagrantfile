@@ -8,13 +8,48 @@
 $ansible_script = <<SCRIPT
 #!/bin/bash
 
-sudo apt-get update
+sudo apt-get update >/dev/null
 sudo apt-get -y upgrade
 
 sudo apt-get install -y software-properties-common
 sudo apt-add-repository -y ppa:ansible/ansible
-sudo apt-get update
+sudo apt-get update >/dev/null
 sudo apt-get install -y ansible
+
+if [[ ! -d /home/ansible ]]; then 
+  sudo useradd ansible
+  sudo mkdir -p /home/ansible/.ssh
+fi
+
+cp /vagrant/ssh/AnsibleSSHKey /home/ansible/.ssh
+touch /home/ansible/.ssh/config
+sudo chown -R ansible:ansible /home/ansible
+sudo chmod 700 /home/ansible/.ssh
+sudo chmod 600 /home/ansible/.ssh/*
+if ! grep --silent '192.168.33.*' /home/ansible/.ssh/config ; then
+cat << __SSHCONFIG__ >> /home/ansible/.ssh/config
+Host client
+  HostName 192.168.33.10
+  User vagrant
+  Port 22
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile ~/.ssh/AnsibleSSHKey
+  IdentitiesOnly yes
+  LogLevel FATAL
+__SSHCONFIG__
+fi
+
+SCRIPT
+
+$client_script = <<SCRIPT
+#!/bin/bash
+
+sudo apt-get update >/dev/null
+sudo apt-get -y upgrade
+
+cat /vagrant/ssh/AnsibleSSHKey.pub >> /home/vagrant/.ssh/authorized_keys
 
 SCRIPT
 
@@ -36,7 +71,7 @@ Vagrant.configure(2) do |config|
     node.ssh.shell = "bash -c 'BASH_ENV=/etc/profile exec bash'"
 
     # Network Config
-    node.vm.network "private_network", ip: "192.168.33.11"
+    node.vm.network "private_network", ip: "192.168.33.11", virtualbox__intnet: "intnet"
 
     # VM Config
     node.vm.provider "virtualbox" do |vb|
@@ -60,10 +95,10 @@ Vagrant.configure(2) do |config|
 
     # Network
     node.vm.network "forwarded_port", guest: 8080, host: 8080
-    node.vm.network "private_network", ip: "192.168.33.10"
+    node.vm.network "private_network", ip: "192.168.33.10", virtualbox__intnet: "intnet"
 
     # Synced_folder
-    node.vm.synced_folder ".", "/home/vagrant/"
+    # node.vm.synced_folder ".", "/home/vagrant/"
 
     # VM Config
     node.vm.provider "virtualbox" do |vb|
@@ -71,5 +106,8 @@ Vagrant.configure(2) do |config|
       vb.memory = 2024
       vb.cpus   = 2
     end
+    
+    # client set up
+    node.vm.provision "shell", :inline => $client_script
   end
 end
